@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Automatic Fish Feeder Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/7.15.5/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/7.15.5/firebase-database.js"></script>
+    <link rel="stylesheet" href="assets/css/style.css">
+</head>
+
+<body>
+    <div class="app-shell">
+        <nav class="topbar">
+            <div>
+                <p class="eyebrow">ESP32 + Firebase Realtime Database</p>
+                <h1>Automatic Fish Feeder</h1>
+            </div>
+            <div class="topbar__meta">
+                <span id="currentDate">--</span>
+                <strong id="currentTime">--:--:--</strong>
+                <button class="ghost-btn" id="darkModeToggle" type="button">Dark Mode</button>
+            </div>
+        </nav>
+
+        <main>
+            <section class="hero-grid">
+                <article class="hero-card">
+                    <span class="label">Current Temperature</span>
+                    <strong id="summaryTemperature">-- °C</strong>
+                    <small id="summaryTemperatureStatus">Waiting for data</small>
+                </article>
+                <article class="hero-card">
+                    <span class="label">Current pH</span>
+                    <strong id="summaryPh">--</strong>
+                    <small>Ideal range: 6.5 to 8.5</small>
+                </article>
+                <article class="hero-card">
+                    <span class="label">Current Turbidity</span>
+                    <strong id="summaryTurbidity">-- NTU</strong>
+                    <small id="summaryTurbidityStatus">Waiting for data</small>
+                </article>
+                <article class="hero-card accent">
+                    <span class="label">Next Feeding Time</span>
+                    <strong id="nextFeeding">--:--</strong>
+                    <small>RTC DS3231 schedule</small>
+                </article>
+            </section>
+
+            <section class="section">
+                <div class="section-heading">
+                    <div>
+                        <h2>Sensor Monitoring Panel</h2>
+                    </div>
+                    <span class="refresh-pill">Auto refresh: 5 seconds</span>
+                </div>
+
+                <div class="sensor-grid">
+                    <article class="sensor-card" id="temperatureCard">
+                        <div class="card-topline">
+                            <span>Temperature</span>
+                            <i class="status-dot"></i>
+                        </div>
+                        <strong id="temperatureValue">-- °C</strong>
+                        <p>DS18B20 waterproof temperature sensor</p>
+                        <span class="status-badge" id="temperatureStatus">Waiting</span>
+                    </article>
+
+                    <article class="sensor-card" id="phCard">
+                        <div class="card-topline">
+                            <span>pH Level</span>
+                            <i class="status-dot"></i>
+                        </div>
+                        <strong id="phValue">--</strong>
+                        <p>PH-4502C probe, ideal range 6.5 to 8.5</p>
+                        <span class="status-badge" id="phStatus">Waiting</span>
+                    </article>
+
+                    <article class="sensor-card" id="turbidityCard">
+                        <div class="card-topline">
+                            <span>Turbidity</span>
+                            <i class="status-dot"></i>
+                        </div>
+                        <strong id="turbidityValue">-- NTU</strong>
+                        <p>DFRobot turbidity sensor water clarity reading</p>
+                        <span class="status-badge" id="turbidityStatus">Waiting</span>
+                    </article>
+                </div>
+            </section>
+
+            <section class="section">
+                <div class="section-heading">
+                    <div>
+                        <h2>Realtime Sensor Charts</h2>
+                    </div>
+                </div>
+
+                <div class="chart-grid">
+                    <article class="chart-card">
+                        <h3>Temperature vs Time</h3>
+                        <canvas id="temperatureChart"></canvas>
+                    </article>
+                    <article class="chart-card">
+                        <h3>pH vs Time</h3>
+                        <canvas id="phChart"></canvas>
+                    </article>
+                    <article class="chart-card">
+                        <h3>Turbidity vs Time</h3>
+                        <canvas id="turbidityChart"></canvas>
+                    </article>
+                </div>
+            </section>
+
+            <section class="section">
+                <div class="section-heading">
+                    <div>
+                        <h2>Sensor Data Logs</h2>
+                        <p class="helper-text">Shows the recorded sensor data logs stored in the database. The records include temperature, pH level, turbidity value, and timestamp.</p>
+                    </div>
+                </div>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Time</th>
+                                <th>Temperature</th>
+                                <th>pH</th>
+                                <th>Turbidity</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sensorLogsTable">
+                            <tr>
+                                <td colspan="5">Waiting for sensor logs...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section class="control-layout">
+                <article class="section panel">
+                    <div class="section-heading">
+                        <div>
+                            <h2>Feeding Control Panel</h2>
+                        </div>
+                    </div>
+                    <button class="feed-btn" id="feedNowButton" type="button">FEED NOW</button>
+                    <p class="helper-text">Manual feed sets <code>/feednow = 1</code>. ESP32 resets it after servo movement.</p>
+
+                    <div class="field-row">
+                        <label for="fishCount">Number of Fish</label>
+                        <input id="fishCount" type="number" min="1" step="1" placeholder="100">
+                    </div>
+                    <button class="primary-btn" id="saveFishCount" type="button">Save Fish Count</button>
+                    <p class="helper-text" id="servoLogic">100 fish = 60° estimated servo rotation</p>
+                </article>
+
+                <article class="section panel">
+                    <div class="section-heading">
+                        <div>
+                            <h2>Feeding Schedule Panel</h2>
+                        </div>
+                    </div>
+                    <div class="schedule-grid">
+                        <label>Time 1<input id="time0" type="time"></label>
+                        <label>Time 2<input id="time1" type="time"></label>
+                        <label>Time 3<input id="time2" type="time"></label>
+                    </div>
+                    <button class="primary-btn" id="saveSchedule" type="button">Save Schedule</button>
+                    <p class="helper-text">Stored in Firebase as <code>timers/time0</code>, <code>time1</code>, and <code>time2</code>.</p>
+                </article>
+            </section>
+
+            <section class="control-layout">
+                <article class="section panel">
+                    <div class="section-heading">
+                        <div>
+                            <h2>System Status Panel</h2>
+                        </div>
+                    </div>
+                    <div class="status-list">
+                        <div><span>WiFi Status</span><strong id="wifiStatus">Unknown</strong></div>
+                        <div><span>ESP32 Status</span><strong id="espStatus">Unknown</strong></div>
+                        <div><span>Battery Voltage</span><strong id="batteryVoltage">-- V</strong></div>
+                        <div><span>Solar Status</span><strong id="solarStatus">Unknown</strong></div>
+                    </div>
+                </article>
+
+                <article class="section panel">
+                    <div class="section-heading">
+                        <div>
+                            <h2>User Settings Panel</h2>
+                        </div>
+                    </div>
+                    <div class="field-row">
+                        <label for="feedingAmount">Feeding Amount</label>
+                        <input id="feedingAmount" type="number" min="1" step="1" placeholder="60">
+                    </div>
+                    <button class="primary-btn" id="saveFeedingAmount" type="button">Save Feeding Amount</button>
+                    <p class="helper-text">Optional override stored at <code>settings/feedingAmount</code>.</p>
+                </article>
+            </section>
+
+            <section class="section">
+                <div class="section-heading">
+                    <div>
+                        <h2>Feeding Log Table</h2>
+                    </div>
+                    <button class="ghost-btn" id="downloadLogs" type="button">Download Logs CSV</button>
+                </div>
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Time</th>
+                                <th>Type</th>
+                            </tr>
+                        </thead>
+                        <tbody id="logsTable">
+                            <tr>
+                                <td colspan="3">Waiting for feeding logs...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <div class="popup-stack" id="popupStack" aria-live="polite"></div>
+    <script src="assets/js/popup.js"></script>
+    <script src="assets/js/script.js"></script>
+</body>
+
+</html>
